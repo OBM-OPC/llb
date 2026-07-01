@@ -1,0 +1,5 @@
+create table if not exists public.words (rank integer primary key, category text not null, bulgarian text not null, english text not null, spoken text, source text);
+create table if not exists public.user_word_reviews (user_id uuid not null references auth.users(id) on delete cascade, word_rank integer not null references public.words(rank) on delete cascade, ease_factor numeric not null default 2.5, interval_days integer not null default 0, repetitions integer not null default 0, lapses integer not null default 0, due_at timestamptz not null default now(), updated_at timestamptz not null default now(), primary key(user_id, word_rank));
+alter table public.words enable row level security; alter table public.user_word_reviews enable row level security;
+drop policy if exists "Words are readable" on public.words; create policy "Words are readable" on public.words for select using (true);
+drop policy if exists "Users manage their reviews" on public.user_word_reviews; create policy "Users manage their reviews" on public.user_word_reviews for all using (auth.uid() = user_id) with check (auth.uid() = user_id);

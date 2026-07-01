@@ -1,2 +1,2 @@
-import { Flashcards } from '@/components/Flashcards';
-export default function Page(){return <main><Flashcards /></main>}
+import { LearningApp } from '@/components/LearningApp';
+export default function Page(){return <LearningApp />}

@@ -1,7 +1,7 @@
 name: Vercel Deploy
 on:
   push:
-    branches: [main]
+    branches: [dev, main]
 jobs:
   deploy:
     runs-on: ubuntu-latest

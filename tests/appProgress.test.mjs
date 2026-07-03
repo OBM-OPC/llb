@@ -15,7 +15,12 @@ class MemoryStorage {
 const store = new MemoryStorage();
 globalThis.localStorage = store;
 
-const { completeLesson, loadAppProgress, defaultProgress } = await import('../src/lib/appProgress.ts');
+const {
+  completeLesson,
+  computeDailyPct,
+  defaultProgress,
+  loadAppProgress,
+} = await import('../src/lib/appProgress.ts');
 
 function daysBetween(a, b) {
   return Math.round((Date.parse(a + 'T00:00:00Z') - Date.parse(b + 'T00:00:00Z')) / 86_400_000);
@@ -60,4 +65,72 @@ test('skipping a day resets streak', () => {
   } else {
     assert.equal(p.streak, 5, 'expected streak unchanged on same-day gap');
   }
+});
+
+test('default progress exposes todayXp=0 and dailyGoalXp=30', () => {
+  const p = defaultProgress();
+  assert.equal(p.todayXp, 0);
+  assert.equal(p.dailyGoalXp, 30);
+});
+
+test('xp on the same day accumulates into todayXp', () => {
+  store.clear();
+  completeLesson('a', 10);
+  const after = completeLesson('b', 10);
+  // Whatever "today" is for the test runner, both calls happen on it.
+  const todayStr = new Date().toISOString().slice(0, 10);
+  assert.equal(after.lastActiveDate, todayStr);
+  assert.equal(after.todayXp, 20);
+  assert.equal(after.xp, 20);
+});
+
+test('xp earned today drives the daily-pct bar', () => {
+  store.clear();
+  completeLesson('a', 12); // less than default dailyGoalXp=30
+  const p = loadAppProgress();
+  // Compute pct using a `now` aligned with the stored lastActiveDate so we
+  // don't depend on the runner's real "today".
+  const pct = computeDailyPct(p, new Date(p.lastActiveDate + 'T12:00:00Z'));
+  assert.equal(pct, 40); // 12 / 30 = 0.4 → 40%
+});
+
+test('daily pct is capped at 100 even when todayXp exceeds the goal', () => {
+  const base = defaultProgress();
+  const pct = computeDailyPct({ ...base, todayXp: 9999, lastActiveDate: new Date().toISOString().slice(0, 10) });
+  assert.equal(pct, 100);
+});
+
+test('daily pct falls back to 0 when lastActiveDate is from a previous day', () => {
+  // Simulate stored progress from yesterday with a high todayXp value.
+  const yesterday = new Date(Date.parse('2026-01-01T00:00:00Z'));
+  const yesterdayStr = yesterday.toISOString().slice(0, 10);
+  const base = defaultProgress();
+  const pct = computeDailyPct(
+    { ...base, todayXp: 25, lastActiveDate: yesterdayStr },
+    new Date('2026-01-02T00:00:00Z'),
+  );
+  assert.equal(pct, 0);
+});
+
+test('daily pct guards against zero / negative daily goal', () => {
+  const pct = computeDailyPct({ ...defaultProgress(), dailyGoalXp: 0, todayXp: 10, lastActiveDate: new Date().toISOString().slice(0, 10) });
+  assert.equal(pct, 0);
+});
+
+test('starting fresh on a new day resets todayXp before adding the new xp', () => {
+  // Pre-seed the storage with progress stamped two days ago.
+  store.clear();
+  store.setItem('llb.appProgress.v1', JSON.stringify({
+    ...defaultProgress(),
+    xp: 100,
+    todayXp: 30,
+    streak: 7,
+    hearts: 5,
+    lastActiveDate: '2026-01-01',
+  }));
+  const p = completeLesson('fresh', 10);
+  // Whatever "today" is, it is NOT 2026-01-01, so todayXp must reset then add the new xp.
+  assert.notEqual(p.lastActiveDate, '2026-01-01');
+  assert.equal(p.todayXp, 10);
+  assert.equal(p.xp, 110);
 });

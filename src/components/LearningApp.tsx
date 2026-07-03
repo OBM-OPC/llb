@@ -1,7 +1,7 @@
 'use client';
 import { useMemo, useState } from 'react';
 import { lessons, type Lesson } from '@/lib/lessons';
-import { completeLesson, loadAppProgress, loseHeart, type AppProgress } from '@/lib/appProgress';
+import { completeLesson, computeDailyPct, loadAppProgress, loseHeart, type AppProgress } from '@/lib/appProgress';
 import { gradeWord } from '@/lib/storage';
 import { speakBulgarian } from '@/lib/tts';
 import type { Word } from '@/data/words';
@@ -33,7 +33,7 @@ export function LearningApp() {
   const steps = useMemo(() => buildSteps(activeLesson), [activeLesson]);
   const step = steps[stepIndex];
   const unlocked = (i: number) => i === 0 || progress.completedLessons.includes(lessons[i - 1]?.id);
-  const dailyPct = Math.min(100, Math.round((progress.xp % progress.dailyGoalXp) / progress.dailyGoalXp * 100));
+  const dailyPct = computeDailyPct(progress);
 
   function startLesson(lesson: Lesson) { setActiveLesson(lesson); setStepIndex(0); setAnswer(''); setFeedback(null); setCorrect(0); setScreen('lesson'); }
   function finishLesson() { const p = completeLesson(activeLesson.id, activeLesson.xp); setProgress(p); setScreen('summary'); }

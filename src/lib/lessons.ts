@@ -26,3 +26,10 @@ export const lessons: Lesson[] = categories.flatMap((category, catIndex) => {
 }).slice(0, 30);
 
 export function getLesson(id: string) { return lessons.find((lesson) => lesson.id === id) ?? lessons[0]; }
+
+/**
+ * Re-export the pure answer-checker from `lessonAnswer.ts` so existing imports
+ * keep working after the helper was extracted into its own dependency-free
+ * module (so `node --test` can resolve it without the Next path alias).
+ */
+export { matchesTypedAnswer, normalizeAnswer } from './lessonAnswer';

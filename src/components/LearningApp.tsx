@@ -6,21 +6,19 @@ import { gradeWord } from '@/lib/storage';
 import { speakBulgarian } from '@/lib/tts';
 import type { Word } from '@/data/words';
 import { matchesTypedAnswer } from '@/lib/lessons';
+import { buildChoiceOptions, gradedStepCount } from '@/lib/lessonSteps';
 
 type Screen = 'home' | 'lesson' | 'summary';
 type Step = { kind: 'learn' | 'choice' | 'type' | 'listen'; word: Word; choices?: string[] };
 
-function shuffle<T>(items: T[]) { return [...items].sort(() => Math.random() - 0.5); }
-function buildSteps(lesson: Lesson): Step[] {
+function buildSteps(lesson: Lesson, rand: () => number = Math.random): Step[] {
   const pool = lesson.words;
   return pool.slice(0, 8).flatMap((word, i) => [
     { kind: 'learn' as const, word },
-    { kind: 'choice' as const, word, choices: shuffle([word.bulgarian, ...shuffle(pool.filter((w) => w.rank !== word.rank)).slice(0, 3).map((w) => w.bulgarian)]) },
+    { kind: 'choice' as const, word, choices: buildChoiceOptions(word.bulgarian, pool, 3, rand) },
     i % 2 === 0 ? { kind: 'type' as const, word } : { kind: 'listen' as const, word },
   ]);
 }
-
-function normalize(s: string) { return (s ?? '').trim().toLowerCase().replace(/[.;,!]/g, ''); }
 function Stat({ label, value }: { label: string; value: string | number }) { return <div className="rounded-2xl bg-white px-4 py-3 text-center shadow-sm"><div className="text-xl font-black text-rosewood">{value}</div><div className="text-xs font-bold uppercase tracking-wide text-gray-500">{label}</div></div>; }
 
 export function LearningApp() {
@@ -43,7 +41,10 @@ export function LearningApp() {
   function checkChoice(choice: string) { if (!feedback) mark(choice === step.word.bulgarian); }
   function checkTyped() { if (!feedback) mark(matchesTypedAnswer(answer, step.word)); }
 
-  if (screen === 'summary') return <main className="min-h-screen bg-yogurt px-4 py-8"><section className="mx-auto max-w-xl rounded-[2rem] bg-white p-8 text-center shadow-xl"><div className="text-6xl">🏆</div><h1 className="mt-4 text-3xl font-black text-rosewood">Lesson complete!</h1><p className="mt-2 text-gray-600">You got {correct} of {steps.length} exercises right.</p><div className="mt-6 grid grid-cols-3 gap-3"><Stat label="XP" value={`+${activeLesson.xp}`} /><Stat label="Streak" value={`${progress.streak}🔥`} /><Stat label="Hearts" value={`${progress.hearts}❤️`} /></div><button onClick={()=>setScreen('home')} className="mt-8 w-full rounded-2xl bg-[#58cc02] px-5 py-4 font-black text-white shadow-[0_6px_0_#46a302]">Continue</button></section></main>;
+  if (screen === 'summary') {
+    const total = gradedStepCount(steps);
+    return <main className="min-h-screen bg-yogurt px-4 py-8"><section className="mx-auto max-w-xl rounded-[2rem] bg-white p-8 text-center shadow-xl"><div className="text-6xl">🏆</div><h1 className="mt-4 text-3xl font-black text-rosewood">Lesson complete!</h1><p className="mt-2 text-gray-600">You got {correct} of {total} exercises right.</p><div className="mt-6 grid grid-cols-3 gap-3"><Stat label="XP" value={`+${activeLesson.xp}`} /><Stat label="Streak" value={`${progress.streak}🔥`} /><Stat label="Hearts" value={`${progress.hearts}❤️`} /></div><button onClick={()=>setScreen('home')} className="mt-8 w-full rounded-2xl bg-[#58cc02] px-5 py-4 font-black text-white shadow-[0_6px_0_#46a302]">Continue</button></section></main>;
+  }
 
   if (screen === 'lesson' && step) {
     const pct = Math.round(((stepIndex + 1) / steps.length) * 100);

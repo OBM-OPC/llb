@@ -10,10 +10,42 @@ function safeSet(key: string, value: string): boolean {
 }
 
 export function defaultProgress(): AppProgress { return { completedLessons: [], xp: 0, todayXp: 0, streak: 0, hearts: 5, dailyGoalXp: 30 }; }
+/**
+ * Pure helper: given the currently stored progress and `now`, return a
+ * progress record whose per-day values are normalized for today:
+ *  - `todayXp` resets to 0 on a new day,
+ *  - `hearts` refills to 5 on a new day (Duolingo-style daily refill so a
+ *    learner who drained their hearts overnight starts the new day with a
+ *    full set instead of being stuck at zero forever).
+ *
+ * Lives as a pure function so the test runner can drive it with explicit
+ * date strings instead of stubbing `new Date()` inside the module.
+ */
+export function refreshOnNewDay(progress: AppProgress, now: Date = new Date()): AppProgress {
+  const todayStr = today();
+  if (progress.lastActiveDate === todayStr) {
+    return { ...progress, hearts: Math.max(0, Math.min(5, progress.hearts)) };
+  }
+  return { ...progress, todayXp: 0, hearts: 5 };
+}
+
 export function loadAppProgress(): AppProgress {
   const raw = safeGet(KEY);
-  if (!raw) return defaultProgress();
-  try { return { ...defaultProgress(), ...JSON.parse(raw) }; } catch { return defaultProgress(); }
+  const base = (() => {
+    if (!raw) return defaultProgress();
+    try {
+      const parsed = JSON.parse(raw);
+      // Guard against non-object payloads so a stray primitive in localStorage
+      // can't crash the loading view.
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return { ...defaultProgress(), ...parsed } as AppProgress;
+      }
+      return defaultProgress();
+    } catch {
+      return defaultProgress();
+    }
+  })();
+  return refreshOnNewDay(base);
 }
 export function saveAppProgress(progress: AppProgress) { safeSet(KEY, JSON.stringify(progress)); }
 function dayDiff(a: string, b: string): number {

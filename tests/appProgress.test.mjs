@@ -20,6 +20,7 @@ const {
   computeDailyPct,
   defaultProgress,
   loadAppProgress,
+  refreshOnNewDay,
 } = await import('../src/lib/appProgress.ts');
 
 function daysBetween(a, b) {
@@ -133,4 +134,55 @@ test('starting fresh on a new day resets todayXp before adding the new xp', () =
   assert.notEqual(p.lastActiveDate, '2026-01-01');
   assert.equal(p.todayXp, 10);
   assert.equal(p.xp, 110);
+});
+
+test('loading progress on a new day refills hearts to 5', () => {
+  // Stored progress from a previous day with drained hearts.
+  store.clear();
+  store.setItem('llb.appProgress.v1', JSON.stringify({
+    ...defaultProgress(),
+    xp: 100,
+    todayXp: 0,
+    streak: 3,
+    hearts: 0,
+    lastActiveDate: '2026-01-01',
+  }));
+  const p = loadAppProgress();
+  // `lastActiveDate` is intentionally not stamped until the user actually
+  // completes a lesson — we only normalise per-day values on load.
+  assert.equal(p.lastActiveDate, '2026-01-01');
+  assert.equal(p.hearts, 5, 'hearts must refill overnight');
+  assert.equal(p.todayXp, 0, 'todayXp must reset on the new day');
+});
+
+test('loading progress on the same day preserves the current heart count', () => {
+  // Stamp "today" exactly as the runner sees it. Hearts must pass through.
+  store.clear();
+  const todayStr = new Date().toISOString().slice(0, 10);
+  store.setItem('llb.appProgress.v1', JSON.stringify({
+    ...defaultProgress(),
+    hearts: 2,
+    lastActiveDate: todayStr,
+  }));
+  const p = loadAppProgress();
+  assert.equal(p.hearts, 2);
+});
+
+test('refreshOnNewDay clamps out-of-range heart counts', () => {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const base = { ...defaultProgress(), hearts: -7, lastActiveDate: todayStr };
+  assert.equal(refreshOnNewDay(base).hearts, 0);
+  const overflow = { ...defaultProgress(), hearts: 99, lastActiveDate: todayStr };
+  assert.equal(refreshOnNewDay(overflow).hearts, 5);
+});
+
+test('loading progress tolerates a non-object payload in localStorage', () => {
+  // A stray primitive (e.g. an old, buggy build) must not crash the app.
+  store.clear();
+  store.setItem('llb.appProgress.v1', 'null');
+  assert.deepEqual(loadAppProgress(), defaultProgress());
+  store.setItem('llb.appProgress.v1', '"hello"');
+  assert.deepEqual(loadAppProgress(), defaultProgress());
+  store.setItem('llb.appProgress.v1', '[1,2,3]');
+  assert.deepEqual(loadAppProgress(), defaultProgress());
 });

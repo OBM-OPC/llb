@@ -186,3 +186,66 @@ test('loading progress tolerates a non-object payload in localStorage', () => {
   store.setItem('llb.appProgress.v1', '[1,2,3]');
   assert.deepEqual(loadAppProgress(), defaultProgress());
 });
+
+test('redoing a completed lesson does NOT credit XP again (no double XP)', () => {
+  // Regression: `completeLesson` previously added lesson-XP to `xp` and
+  // `todayXp` on every call, even when the lesson id was already in
+  // `completedLessons`. Duolingo only credits a lesson once; redoing is
+  // practice and must not pad the total. The home → lesson → summary →
+  // home → same-lesson flow could otherwise double (and triple, etc.) the
+  // XP counter without the learner learning anything new.
+  store.clear();
+  const first = completeLesson('a', 10);
+  assert.equal(first.xp, 10);
+  assert.equal(first.todayXp, 10);
+  assert.deepEqual(first.completedLessons, ['a']);
+
+  const redo = completeLesson('a', 10);
+  assert.deepEqual(redo.completedLessons, ['a'], 'completedLessons must be a no-op on redo');
+  assert.equal(redo.xp, 10, 'total xp must NOT increase on redo');
+  assert.equal(redo.todayXp, 10, 'todayXp must NOT increase on redo');
+  assert.equal(redo.lastActiveDate, first.lastActiveDate);
+});
+
+test('redoing a completed lesson still applies streak / refill-heart effects', () => {
+  // Practice (redo) does credit the same-day streak pass-through and the
+  // +1 heart refill (max 5) — only XP gating is strict. Hearts are a UX
+  // encouragement to keep practising, not a sign of new mastery.
+  store.clear();
+  // Drain hearts, set lastActiveDate to today so we are in "same day" path.
+  const todayStr = new Date().toISOString().slice(0, 10);
+  store.setItem('llb.appProgress.v1', JSON.stringify({
+    ...defaultProgress(),
+    completedLessons: ['a'],
+    xp: 10,
+    todayXp: 10,
+    streak: 1,
+    hearts: 1,
+    lastActiveDate: todayStr,
+  }));
+  const p = completeLesson('a', 10);
+  assert.equal(p.xp, 10, 'xp unchanged on redo');
+  assert.equal(p.hearts, 2, 'hearts still refill by +1 on redo');
+  assert.equal(p.streak, 1, 'same-day streak pass-through preserved');
+});
+
+test('re-completing a lesson across a day boundary does NOT credit XP twice either', () => {
+  // Simulate progress stamped on a previous day with one already-completed
+  // lesson in the bag. Re-completing that lesson on the new day must still
+  // NOT add XP — the learner already earned it, even if the day rolled over.
+  store.clear();
+  store.setItem('llb.appProgress.v1', JSON.stringify({
+    ...defaultProgress(),
+    completedLessons: ['a'],
+    xp: 10,
+    todayXp: 10,
+    streak: 5,
+    hearts: 5,
+    lastActiveDate: '2026-01-01',
+  }));
+  const p = completeLesson('a', 11);
+  assert.deepEqual(p.completedLessons, ['a']);
+  assert.equal(p.xp, 10, 'xp stays at what was originally earned');
+  assert.equal(p.todayXp, 0, 'todayXp resets on the new day (no credit from the redo)');
+});
+

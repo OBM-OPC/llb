@@ -57,6 +57,11 @@ function dayDiff(a: string, b: string): number {
 export function completeLesson(id: string, xp: number) {
   const p = loadAppProgress();
   const now = today();
+  // Duolingo-style 'no double XP': if the learner already completed this
+  // lesson before, completing it again must NOT credit XP again. Streak and
+  // hearts go through (the redo is genuine practice), but the XP, todayXp
+  // and completedLessons list behave as if it were a no-op for credit.
+  const alreadyDone = p.completedLessons.includes(id);
   let nextStreak = p.streak;
   if (p.lastActiveDate === now) {
     nextStreak = nextStreak || 1;
@@ -68,13 +73,17 @@ export function completeLesson(id: string, xp: number) {
     // 1 day later → continue streak, ≥2 days later → broken, reset to 1.
     nextStreak = diff === 1 ? p.streak + 1 : 1;
   }
-  const completed = p.completedLessons.includes(id) ? p.completedLessons : [...p.completedLessons, id];
+  const completed = alreadyDone ? p.completedLessons : [...p.completedLessons, id];
   const isNewDay = p.lastActiveDate !== now;
+  // First-time completion only: credit XP into total + todayXp. A redo is
+  // pure practice and must not pad the leaderboard or daily bar.
+  const earnedTodayXp = alreadyDone ? p.todayXp : (isNewDay ? 0 : p.todayXp) + xp;
+  const totalXp = alreadyDone ? p.xp : p.xp + xp;
   const next: AppProgress = {
     ...p,
     completedLessons: completed,
-    xp: p.xp + xp,
-    todayXp: (isNewDay ? 0 : p.todayXp) + xp,
+    xp: totalXp,
+    todayXp: earnedTodayXp,
     streak: nextStreak,
     hearts: Math.min(5, p.hearts + 1),
     lastActiveDate: now,
